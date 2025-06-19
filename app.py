@@ -11,7 +11,10 @@ import gradio as gr
 
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 API_KEY = os.environ.get("OLLAMA_API_KEY", "ollama")
-MODEL = os.environ.get("OLLAMA_MODEL", "lingshu-7b")
+MODEL = os.environ.get(
+    "OLLAMA_MODEL",
+    "hf.co/mradermacher/Bio-Medical-MultiModal-Llama-3-8B-V1-GGUF:Q8_0",
+)
 SYSTEM_PROMPT = os.environ.get("SYSTEM_PROMPT")
 CONV_FILE = "conversations.json"
 
