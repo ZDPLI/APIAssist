@@ -3,17 +3,42 @@ from dotenv import load_dotenv
 load_dotenv()
 import base64
 import requests
+import json
+import time
 import gradio as gr
 
 LMSTUDIO_URL = os.environ.get("LMSTUDIO_URL", "http://172.23.32.1:1234")
 API_KEY = os.environ.get("LMSTUDIO_API_KEY", "lm-studio")
 MODEL = os.environ.get("LMSTUDIO_MODEL", "lingshu-7b")
 SYSTEM_PROMPT = os.environ.get("SYSTEM_PROMPT")
+CONV_FILE = "conversations.json"
+
+
+def load_conversations():
+    if os.path.exists(CONV_FILE):
+        with open(CONV_FILE, "r") as f:
+            try:
+                return json.load(f)
+            except Exception:
+                return {}
+    return {}
+
+
+def save_conversations(convs):
+    with open(CONV_FILE, "w") as f:
+        json.dump(convs, f)
 
 if not LMSTUDIO_URL:
     raise RuntimeError("LMSTUDIO_URL environment variable not set")
 
 CHAT_ENDPOINT = LMSTUDIO_URL.rstrip('/') + "/v1/chat/completions"
+conversations = load_conversations()
+if not conversations:
+    cid = time.strftime("%Y%m%d-%H%M%S")
+    conversations[cid] = []
+    save_conversations(conversations)
+else:
+    cid = list(conversations.keys())[0]
 
 def chat_with_lmstudio(text, image_path=None, history=None):
     messages = []
@@ -39,18 +64,42 @@ def chat_with_lmstudio(text, image_path=None, history=None):
     reply = data.get("choices", [{}])[0].get("message", {}).get("content", "")
     return reply
 
-def respond(message, image, history):
+def respond(message, image, chat_id, convs):
+    history = convs.get(chat_id, [])
     reply = chat_with_lmstudio(message, image, history)
     history.append((message, reply))
-    return history, "", None
+    convs[chat_id] = history
+    save_conversations(convs)
+    return history, "", None, convs
 
-with gr.Blocks() as demo:
-    gr.Markdown("# Мультимодальный медицинский ассистент")
-    chatbot = gr.Chatbot()
+def change_chat(chat_id, convs):
+    return convs.get(chat_id, []), chat_id
+
+def new_chat(convs):
+    chat_id = time.strftime("%Y%m%d-%H%M%S")
+    convs[chat_id] = []
+    save_conversations(convs)
+    return gr.Dropdown.update(choices=list(convs.keys()), value=chat_id), [], convs, chat_id
+
+theme = gr.themes.Soft(primary_hue="green", secondary_hue="blue")
+
+with gr.Blocks(theme=theme, css=".chatbot {height: 500px}") as demo:
+    conv_state = gr.State(conversations)
+    current_chat = gr.State(cid)
     with gr.Row():
-        txt = gr.Textbox(label="Сообщение")
-        img = gr.Image(type="filepath", label="Изображение (необязательно)")
-    send = gr.Button("Отправить")
-    send.click(respond, [txt, img, chatbot], [chatbot, txt, img])
+        with gr.Column(scale=1):
+            conv_select = gr.Dropdown(label="Диалоги", choices=list(conversations.keys()), value=cid)
+            new_btn = gr.Button("Новый диалог")
+        with gr.Column(scale=4):
+            gr.Markdown("# Мультимодальный медицинский ассистент")
+            chatbot = gr.Chatbot(value=conversations.get(cid, []), elem_classes="chatbot")
+            with gr.Row():
+                txt = gr.Textbox(label="Сообщение", scale=3)
+                img = gr.Image(type="filepath", label="Изображение", scale=1)
+            send = gr.Button("Отправить")
+
+    send.click(respond, [txt, img, current_chat, conv_state], [chatbot, txt, img, conv_state])
+    conv_select.change(change_chat, [conv_select, conv_state], [chatbot, current_chat])
+    new_btn.click(new_chat, conv_state, [conv_select, chatbot, conv_state, current_chat])
 
     demo.launch(server_name="0.0.0.0", server_port=7860)
