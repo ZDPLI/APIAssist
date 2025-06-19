@@ -1,3 +1,5 @@
+"""Gradio chat client for a local Ollama server."""
+
 import os
 from dotenv import load_dotenv
 load_dotenv()
@@ -7,9 +9,9 @@ import json
 import time
 import gradio as gr
 
-LMSTUDIO_URL = os.environ.get("LMSTUDIO_URL", "http://172.23.32.1:1234")
-API_KEY = os.environ.get("LMSTUDIO_API_KEY", "lm-studio")
-MODEL = os.environ.get("LMSTUDIO_MODEL", "lingshu-7b")
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+API_KEY = os.environ.get("OLLAMA_API_KEY", "ollama")
+MODEL = os.environ.get("OLLAMA_MODEL", "lingshu-7b")
 SYSTEM_PROMPT = os.environ.get("SYSTEM_PROMPT")
 CONV_FILE = "conversations.json"
 
@@ -28,10 +30,10 @@ def save_conversations(convs):
     with open(CONV_FILE, "w") as f:
         json.dump(convs, f)
 
-if not LMSTUDIO_URL:
-    raise RuntimeError("LMSTUDIO_URL environment variable not set")
+if not OLLAMA_URL:
+    raise RuntimeError("OLLAMA_URL environment variable not set")
 
-CHAT_ENDPOINT = LMSTUDIO_URL.rstrip('/') + "/v1/chat/completions"
+CHAT_ENDPOINT = OLLAMA_URL.rstrip('/') + "/v1/chat/completions"
 conversations = load_conversations()
 if not conversations:
     cid = time.strftime("%Y%m%d-%H%M%S")
@@ -40,7 +42,7 @@ if not conversations:
 else:
     cid = list(conversations.keys())[0]
 
-def chat_with_lmstudio(text, image_path=None, history=None, stream=False):
+def chat_with_ollama(text, image_path=None, history=None, stream=False):
     messages = []
     if SYSTEM_PROMPT:
         messages.append({"role": "system", "content": SYSTEM_PROMPT})
@@ -91,7 +93,7 @@ def respond(message, image, chat_id, convs):
     history.append((message, ""))
     convs[chat_id] = history
     save_conversations(convs)
-    for token in chat_with_lmstudio(message, image, history, stream=True):
+    for token in chat_with_ollama(message, image, history, stream=True):
         response += token
         history[-1] = (message, response)
         yield history, "", None, convs

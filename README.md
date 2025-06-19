@@ -1,8 +1,8 @@
 # Мультимодальный медицинский чатбот
 
 Веб-приложение на Gradio с материал-ориентированным дизайном. Оно позволяет
-общаться с локальной моделью LM Studio по адресу `http://172.23.32.1:1234` или
-`http://localhost:1234`. Поддерживается отправка текста и изображения в одном
+общаться с локальной моделью через **Ollama** (`ollama serve`) по адресу
+`http://localhost:11434` (или другому, заданному в переменной окружения). Поддерживается отправка текста и изображения в одном
 сообщении. Чаты сохраняются между запусками, можно вести несколько диалогов.
 
 ## Запуск
@@ -15,12 +15,14 @@ python -m pip install -r requirements/requirements.txt
 
 2. Создайте файл `.env` (см. пример ниже) или экспортируйте переменные окружения:
 
-- `LMSTUDIO_URL` — URL LM Studio (порт 1234), например `http://172.23.32.1:1234` или `http://localhost:1234`
-- `LMSTUDIO_API_KEY` — ключ (если не требуется, оставьте `lm-studio`)
-- `LMSTUDIO_MODEL` — название модели в LM Studio
+- `OLLAMA_URL` — URL Ollama (по умолчанию `http://localhost:11434`)
+- `OLLAMA_API_KEY` — ключ (если Ollama запущена с `--api-key`)
+- `OLLAMA_MODEL` — название модели в Ollama
 - `SYSTEM_PROMPT` — системный промпт (опционально)
 
-3. Запустите приложение:
+3. Убедитесь, что запущен `ollama serve` с нужной моделью.
+
+4. Запустите приложение:
 
 ```bash
 python app.py
@@ -35,8 +37,8 @@ Material с зелёно‑синим акцентом. Ответы модел�
 ## Пример `.env`
 
 ```bash
-LMSTUDIO_URL=http://172.23.32.1:1234
-LMSTUDIO_API_KEY=lm-studio
-LMSTUDIO_MODEL=lingshu-7b
+OLLAMA_URL=http://localhost:11434
+OLLAMA_API_KEY=ollama
+OLLAMA_MODEL=lingshu-7b
 SYSTEM_PROMPT=You are a helpful medical assistant.
 ```
