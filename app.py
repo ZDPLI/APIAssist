@@ -28,13 +28,21 @@ def save_conversations(convs):
     with open(CONV_FILE, "w") as f:
         json.dump(convs, f)
 
-if not LMSTUDIO_URL:
-    raise RuntimeError("LMSTUDIO_URL environment variable not set")
 
-CHAT_ENDPOINT = LMSTUDIO_URL.rstrip('/') + "/v1/chat/completions"
-conversations = load_conversations()
-if not conversations:
-    cid = time.strftime("%Y%m%d-%H%M%S")
+        messages.append({
+            "role": "user",
+            "content": [
+                {"type": "text", "text": text or ""},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"},
+                },
+            ],
+        })
+    else:
+        messages.append({"role": "user", "content": text or ""})
+
+    payload = {"model": MODEL, "messages": messages, "stream": stream}
     conversations[cid] = []
     save_conversations(conversations)
 else:
@@ -91,7 +99,7 @@ def respond(message, image, chat_id, convs):
     history.append((message, ""))
     convs[chat_id] = history
     save_conversations(convs)
-    for token in chat_with_lmstudio(message, image, history, stream=True):
+    return gr.update(choices=list(convs.keys()), value=chat_id), [], convs, chat_id
         response += token
         history[-1] = (message, response)
         yield history, "", None, convs
