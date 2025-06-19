@@ -1,15 +1,11 @@
-"""Gradio chat client for LM Studio via an OpenAI-compatible API."""
-
 import os
+from dotenv import load_dotenv
+load_dotenv()
 import base64
+import requests
 import json
 import time
-
-import requests
 import gradio as gr
-from dotenv import load_dotenv
-
-load_dotenv()
 
 LMSTUDIO_URL = os.environ.get("LMSTUDIO_URL", "http://172.23.32.1:1234")
 API_KEY = os.environ.get("LMSTUDIO_API_KEY", "lm-studio")
@@ -34,6 +30,7 @@ def save_conversations(convs):
 
 if not LMSTUDIO_URL:
     raise RuntimeError("LMSTUDIO_URL environment variable not set")
+
 CHAT_ENDPOINT = LMSTUDIO_URL.rstrip('/') + "/v1/chat/completions"
 conversations = load_conversations()
 if not conversations:
@@ -47,17 +44,20 @@ def chat_with_lmstudio(text, image_path=None, history=None, stream=False):
     messages = []
     if SYSTEM_PROMPT:
         messages.append({"role": "system", "content": SYSTEM_PROMPT})
-    if history:
-        for usr, ans in history:
-            messages.append({"role": "user", "content": usr})
-            messages.append({"role": "assistant", "content": ans})
-    messages.append({"role": "user", "content": text or ""})
-
-    payload = {"model": MODEL, "messages": messages, "stream": stream}
+    user_content = []
+    if text:
+        user_content.append({"type": "text", "text": text})
     if image_path:
-        with open(image_path, "rb") as f:
-            img_b64 = base64.b64encode(f.read()).decode()
-        payload["images"] = [img_b64]
+        with open(image_path, 'rb') as f:
+            b64 = base64.b64encode(f.read()).decode()
+        user_content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+    messages.append({"role": "user", "content": user_content if len(user_content) > 1 else user_content[0]})
+
+    payload = {
+        "model": MODEL,
+        "messages": messages,
+        "stream": stream,
+    }
     headers = {"Authorization": f"Bearer {API_KEY}"}
     resp = requests.post(
         CHAT_ENDPOINT,
@@ -66,10 +66,7 @@ def chat_with_lmstudio(text, image_path=None, history=None, stream=False):
         stream=stream,
         timeout=90,
     )
-    try:
-        resp.raise_for_status()
-    except requests.HTTPError as exc:
-        raise RuntimeError(f"LM Studio error: {resp.text}") from exc
+    resp.raise_for_status()
     if not stream:
         data = resp.json()
         return data.get("choices", [{}])[0].get("message", {}).get("content", "")
@@ -77,7 +74,7 @@ def chat_with_lmstudio(text, image_path=None, history=None, stream=False):
     for line in resp.iter_lines():
         if not line:
             continue
-        if line.startswith(b"data:"):
+        if line.strip().startswith(b"data:"):
             content = line.decode().split("data:", 1)[1].strip()
             if content == "[DONE]":
                 break
@@ -94,13 +91,9 @@ def respond(message, image, chat_id, convs):
     history.append((message, ""))
     convs[chat_id] = history
     save_conversations(convs)
-    try:
-        for token in chat_with_lmstudio(message, image, history, stream=True):
-            response += token
-            history[-1] = (message, response)
-            yield history, "", None, convs
-    except Exception as err:
-        history[-1] = (message, f"Error: {err}")
+    for token in chat_with_lmstudio(message, image, history, stream=True):
+        response += token
+        history[-1] = (message, response)
         yield history, "", None, convs
     save_conversations(convs)
 
