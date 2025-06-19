@@ -1,8 +1,7 @@
 # Мультимодальный медицинский чатбот
 
 Веб-приложение на Gradio с материал-ориентированным дизайном. Оно позволяет
-общаться с локальной моделью через **Ollama** (используйте `ollama run` или `ollama serve`) по адресу
-`http://localhost:11434` (или другому, заданному в переменной окружения). Поддерживается отправка текста и изображения в одном
+общаться с локальной моделью через **LM Studio** по совместимому с OpenAI API адресу `http://172.23.32.1:1234` (или туннелю, заданному в переменной окружения). Поддерживается отправка текста и изображения в одном
 сообщении. Чаты сохраняются между запусками, можно вести несколько диалогов.
 
 ## Запуск
@@ -15,15 +14,15 @@ python -m pip install -r requirements/requirements.txt
 
 2. Создайте файл `.env` (см. пример ниже) или экспортируйте переменные окружения:
 
-- `OLLAMA_URL` — URL Ollama (по умолчанию `http://localhost:11434`)
-- `OLLAMA_API_KEY` — ключ (если Ollama запущена с `--api-key`)
-- `OLLAMA_MODEL` — название модели в Ollama
+- `LMSTUDIO_URL` — URL LM Studio (по умолчанию `http://172.23.32.1:1234`)
+- `LMSTUDIO_API_KEY` — ключ (если требуется)
+- `LMSTUDIO_MODEL` — название модели
 - `SYSTEM_PROMPT` — системный промпт (опционально)
 
-3. Убедитесь, что запущен `ollama serve` с моделью `hf.co/mradermacher/Bio-Medical-MultiModal-Llama-3-8B-V1-GGUF:Q8_0`:
+3. Убедитесь, что запущен `LM Studio` с моделью `lingshu-7b`:
 
 ```bash
-ollama run hf.co/mradermacher/Bio-Medical-MultiModal-Llama-3-8B-V1-GGUF:Q8_0
+lmstudio start lingshu-7b
 ```
 
 4. Запустите приложение:
@@ -41,8 +40,8 @@ Material с зелёно‑синим акцентом. Ответы модел�
 ## Пример `.env`
 
 ```bash
-OLLAMA_URL=http://localhost:11434
-OLLAMA_API_KEY=ollama
-OLLAMA_MODEL=hf.co/mradermacher/Bio-Medical-MultiModal-Llama-3-8B-V1-GGUF:Q8_0
+LMSTUDIO_URL=http://172.23.32.1:1234
+LMSTUDIO_API_KEY=lm-studio
+LMSTUDIO_MODEL=lingshu-7b
 SYSTEM_PROMPT=You are a helpful medical assistant.
 ```
