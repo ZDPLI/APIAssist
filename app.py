@@ -1,20 +1,24 @@
-"""Gradio chat client for LM Studio.
+"""Multimodal chat client for LM Studio.
 
-This application provides a multimodal chat interface that sends user
-messages and optional images to LM Studio via its OpenAI-compatible API.
-Conversation histories are stored on disk so multiple chats can be
-continued between runs.
+This Gradio application sends text and image prompts to LM Studio using its
+OpenAI-compatible API and streams the response. Conversation histories are
+stored on disk so chats can be resumed between runs.
 """
+from __future__ import annotations
+
 import os
-from typing import Dict, List, Tuple, Iterable, Optional
-load_dotenv()
+import re
+from typing import Dict, Iterable, List, Optional
+import requests
 LMSTUDIO_URL = os.getenv("LMSTUDIO_URL", "http://172.23.32.1:1234")
 LMSTUDIO_API_KEY = os.getenv("LMSTUDIO_API_KEY", "lm-studio")
 LMSTUDIO_MODEL = os.getenv("LMSTUDIO_MODEL", "lingshu-7b")
 SYSTEM_PROMPT = os.getenv("SYSTEM_PROMPT", "")
+MAX_NUM_IMAGES = int(os.getenv("MAX_NUM_IMAGES", "5"))
 
 CHAT_ENDPOINT = LMSTUDIO_URL.rstrip("/") + "/v1/chat/completions"
-Conversation = List[Tuple[str, str]]
+Message = Dict[str, object]
+Conversation = List[Message]
 Conversations = Dict[str, Conversation]
 
 def load_conversations() -> Conversations:
@@ -34,56 +38,101 @@ if conversations:
     conversations[current_cid] = []
     save_conversations(conversations)
 
-def _build_messages(text: str, image_path: Optional[str], history: Conversation) -> List[Dict]:
-    messages: List[Dict] = []
-    for user, assistant in history:
-        messages.append({"role": "user", "content": user})
-        messages.append({"role": "assistant", "content": assistant})
-        content = [
-            {"type": "text", "text": text or ""},
-            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}},
-        ]
-        messages.append({"role": "user", "content": content})
-    return messages
+# ---------------------------------------------------------------------------
+# Helpers for converting user input to LM Studio format
+# ---------------------------------------------------------------------------
 
-def chat_with_lmstudio(text: str, image_path: Optional[str], history: Conversation, stream: bool) -> Iterable[str]:
-    payload = {
-        "model": LMSTUDIO_MODEL,
-        "messages": _build_messages(text, image_path, history),
-        "stream": stream,
-    }
-    headers = {"Authorization": f"Bearer {LMSTUDIO_API_KEY}"}
-    resp = requests.post(CHAT_ENDPOINT, json=payload, headers=headers, stream=stream, timeout=90)
+def _encode_image(path: str) -> str:
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
 
-        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-        yield content
+
+def process_user_message(message: dict) -> object:
+    """Convert textbox output to OpenAI message content."""
+    text = message.get("text", "")
+    files: List[str] = message.get("files") or []
+    if not files:
+        return text
+
+    if len(files) > MAX_NUM_IMAGES:
+        raise ValueError(f"You can upload up to {MAX_NUM_IMAGES} images.")
+
+    if "<image>" in text:
+        parts = re.split(r"(<image>)", text)
+        content: List[dict] = []
+        idx = 0
+        for part in parts:
+            if part == "<image>" and idx < len(files):
+                b64 = _encode_image(files[idx])
+                content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+                idx += 1
+            elif part and part != "<image>":
+                content.append({"type": "text", "text": part})
+        return content
+
+    content = []
+    if text:
+        content.append({"type": "text", "text": text})
+    for path in files:
+        b64 = _encode_image(path)
+        content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+    return content
+
+
+# ---------------------------------------------------------------------------
+# LM Studio communication
+# ---------------------------------------------------------------------------
+
+def chat_with_lmstudio(messages: Conversation, stream: bool, max_tokens: int) -> Iterable[str]:
+        "messages": messages,
+        "max_tokens": max_tokens,
+    resp.raise_for_status()
+        yield data.get("choices", [{}])[0].get("message", {}).get("content", "")
+
+# ---------------------------------------------------------------------------
+# Gradio callbacks
+# ---------------------------------------------------------------------------
+
+def respond(message: dict, chat_id: str, convs: Conversations, system_prompt: str, max_tokens: int):
+    history = convs.setdefault(chat_id, [])
+    user_content = process_user_message(message)
+    history.append({"role": "user", "content": user_content})
+    convo_for_api = []
+    if system_prompt:
+        convo_for_api.append({"role": "system", "content": system_prompt})
+    convo_for_api.extend(history)
+
+    assistant = {"role": "assistant", "content": ""}
+        for token in chat_with_lmstudio(convo_for_api, stream=True, max_tokens=max_tokens):
+            assistant["content"] = collected
+            yield history + [assistant], None, convs
+    except Exception as exc:
+        assistant["content"] = f"Error: {exc}"
+        yield history + [assistant], None, convs
+        history.append(assistant)
+        save_conversations(convs)
         return
 
-            chunk = line.decode().split("data:", 1)[1].strip()
-            if chunk == "[DONE]":
-            delta = json.loads(chunk)["choices"][0]["delta"]
-
-def respond(message: str, image: Optional[str], chat_id: str, convs: Conversations):
-
-    collected = ""
-        for token in chat_with_lmstudio(message, image, history[:-1], stream=True):
-            collected += token
-            history[-1] = (message, collected)
-
-def change_chat(chat_id: str, convs: Conversations):
-
-def new_chat(convs: Conversations):
+    history.append(assistant)
+    yield history, None, convs
 
 
-    current_chat = gr.State(current_cid)
+# ---------------------------------------------------------------------------
+# Interface
+# ---------------------------------------------------------------------------
+
+with gr.Blocks(theme=theme, css="style.css") as demo:
+
             conv_select = gr.Dropdown(label="Диалоги", choices=list(conversations.keys()), value=current_cid)
-            chatbot = gr.Chatbot(value=conversations[current_cid], elem_classes="chatbot")
-        "stream": stream,
-    }
-    headers = {"Authorization": f"Bearer {API_KEY}"}
-    resp = requests.post(
-        CHAT_ENDPOINT,
-        json=payload,
+            chatbot = gr.Chatbot(value=conversations[current_cid], elem_classes="chatbot", type="messages")
+            with gr.Row():
+                txt = gr.MultimodalTextbox(file_types=["image"], file_count="multiple", label="Сообщение", autofocus=True)
+                send = gr.Button("Отправить")
+            sys_prompt = gr.Textbox(label="System Prompt", value=SYSTEM_PROMPT)
+            max_tokens = gr.Slider(label="Max Tokens", minimum=100, maximum=4096, value=2048, step=10)
+
+    send.click(respond, [txt, current_chat, conv_state, sys_prompt, max_tokens], [chatbot, txt, conv_state], queue=True)
+
         headers=headers,
         stream=stream,
         timeout=90,
