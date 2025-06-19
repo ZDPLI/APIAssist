@@ -40,7 +40,7 @@ if not conversations:
 else:
     cid = list(conversations.keys())[0]
 
-def chat_with_lmstudio(text, image_path=None, history=None):
+def chat_with_lmstudio(text, image_path=None, history=None, stream=False):
     messages = []
     if SYSTEM_PROMPT:
         messages.append({"role": "system", "content": SYSTEM_PROMPT})
@@ -56,21 +56,46 @@ def chat_with_lmstudio(text, image_path=None, history=None):
     payload = {
         "model": MODEL,
         "messages": messages,
+        "stream": stream,
     }
     headers = {"Authorization": f"Bearer {API_KEY}"}
-    resp = requests.post(CHAT_ENDPOINT, json=payload, headers=headers, timeout=90)
+    resp = requests.post(
+        CHAT_ENDPOINT,
+        json=payload,
+        headers=headers,
+        stream=stream,
+        timeout=90,
+    )
     resp.raise_for_status()
-    data = resp.json()
-    reply = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-    return reply
+    if not stream:
+        data = resp.json()
+        return data.get("choices", [{}])[0].get("message", {}).get("content", "")
+    collected = ""
+    for line in resp.iter_lines():
+        if not line:
+            continue
+        if line.strip().startswith(b"data:"):
+            content = line.decode().split("data:", 1)[1].strip()
+            if content == "[DONE]":
+                break
+            delta = json.loads(content)["choices"][0]["delta"]
+            token = delta.get("content")
+            if token:
+                collected += token
+                yield token
+    return collected
 
 def respond(message, image, chat_id, convs):
     history = convs.get(chat_id, [])
-    reply = chat_with_lmstudio(message, image, history)
-    history.append((message, reply))
+    response = ""
+    history.append((message, ""))
     convs[chat_id] = history
     save_conversations(convs)
-    return history, "", None, convs
+    for token in chat_with_lmstudio(message, image, history, stream=True):
+        response += token
+        history[-1] = (message, response)
+        yield history, "", None, convs
+    save_conversations(convs)
 
 def change_chat(chat_id, convs):
     return convs.get(chat_id, []), chat_id
@@ -83,22 +108,22 @@ def new_chat(convs):
 
 theme = gr.themes.Soft(primary_hue="green", secondary_hue="blue")
 
-with gr.Blocks(theme=theme, css=".chatbot {height: 500px}") as demo:
+with gr.Blocks(theme=theme, css=".chatbot {height: 600px}") as demo:
     conv_state = gr.State(conversations)
     current_chat = gr.State(cid)
     with gr.Row():
-        with gr.Column(scale=1):
+        with gr.Column(scale=2):
             conv_select = gr.Dropdown(label="Диалоги", choices=list(conversations.keys()), value=cid)
             new_btn = gr.Button("Новый диалог")
-        with gr.Column(scale=4):
+        with gr.Column(scale=8):
             gr.Markdown("# Мультимодальный медицинский ассистент")
             chatbot = gr.Chatbot(value=conversations.get(cid, []), elem_classes="chatbot")
-            with gr.Row():
-                txt = gr.Textbox(label="Сообщение", scale=3)
-                img = gr.Image(type="filepath", label="Изображение", scale=1)
-            send = gr.Button("Отправить")
+            with gr.Row(equal_height=True):
+                txt = gr.Textbox(label="Сообщение", scale=8)
+                img = gr.Image(type="filepath", label="Изображение", scale=2)
+                send = gr.Button("Отправить", scale=1)
 
-    send.click(respond, [txt, img, current_chat, conv_state], [chatbot, txt, img, conv_state])
+    send.click(respond, [txt, img, current_chat, conv_state], [chatbot, txt, img, conv_state], queue=True)
     conv_select.change(change_chat, [conv_select, conv_state], [chatbot, current_chat])
     new_btn.click(new_chat, conv_state, [conv_select, chatbot, conv_state, current_chat])
 
